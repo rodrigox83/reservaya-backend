@@ -6,6 +6,7 @@ import authRoutes from './routes/auth.js';
 import grillsRoutes from './routes/grills.js';
 import reservationsRoutes from './routes/reservations.js';
 import { errorHandler } from './middlewares/errorHandler.js';
+import { setupSwagger } from './swagger.js';
 
 dotenv.config();
 
@@ -18,6 +19,9 @@ app.use(cors({
   credentials: true,
 }));
 app.use(express.json());
+
+// Swagger documentation
+setupSwagger(app);
 
 // Routes
 app.use('/api/auth', authRoutes);
