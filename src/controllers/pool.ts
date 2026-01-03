@@ -42,6 +42,10 @@ export async function addGuest(req: AuthRequest, res: Response, next: NextFuncti
       throw new AppError('No autenticado', 401);
     }
 
+    if (!req.user.departmentCode) {
+      throw new AppError('Usuario sin código de departamento', 400);
+    }
+
     const data = addGuestSchema.parse(req.body);
 
     const guest = await prisma.poolGuest.create({
@@ -140,6 +144,10 @@ export async function registerAccess(req: AuthRequest, res: Response, next: Next
   try {
     if (!req.user) {
       throw new AppError('No autenticado', 401);
+    }
+
+    if (!req.user.departmentCode) {
+      throw new AppError('Usuario sin código de departamento', 400);
     }
 
     const data = registerAccessSchema.parse(req.body);

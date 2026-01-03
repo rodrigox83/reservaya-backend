@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
+import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { prisma } from '../utils/prisma.js';
 import { AppError } from '../middlewares/errorHandler.js';
@@ -19,6 +20,11 @@ const registerOwnerSchema = z.object({
   email: z.string().email(),
   phone: z.string().min(9),
   departmentCode: z.string().min(1),
+});
+
+const staffLoginSchema = z.object({
+  username: z.string().min(1),
+  password: z.string().min(1),
 });
 
 function getDepartmentCode(tower: string, floor: string, apartment: string): string {
@@ -230,6 +236,76 @@ export async function me(req: AuthRequest, res: Response, next: NextFunction) {
         phone: user.owner.phone,
         departmentCode: user.owner.departmentCode,
       } : undefined,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+// Staff authentication (Admin/Receptionist)
+export async function staffLogin(req: Request, res: Response, next: NextFunction) {
+  try {
+    const parseResult = staffLoginSchema.safeParse(req.body);
+    if (!parseResult.success) {
+      throw new AppError('Usuario y contraseña son requeridos', 400);
+    }
+
+    const { username, password } = parseResult.data;
+
+    const staff = await prisma.staff.findUnique({
+      where: { username },
+    });
+
+    if (!staff || !staff.isActive) {
+      throw new AppError('Usuario o contraseña incorrectos', 401);
+    }
+
+    const validPassword = await bcrypt.compare(password, staff.password);
+    if (!validPassword) {
+      throw new AppError('Usuario o contraseña incorrectos', 401);
+    }
+
+    const token = jwt.sign(
+      { id: staff.id, role: staff.role, isStaff: true },
+      process.env.JWT_SECRET || 'secret',
+      { expiresIn: '8h' }
+    );
+
+    res.json({
+      staff: {
+        id: staff.id,
+        username: staff.username,
+        firstName: staff.firstName,
+        lastName: staff.lastName,
+        role: staff.role,
+      },
+      token,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function staffMe(req: AuthRequest, res: Response, next: NextFunction) {
+  try {
+    if (!req.user || !req.user.isStaff) {
+      throw new AppError('No autenticado como staff', 401);
+    }
+
+    const staff = await prisma.staff.findUnique({
+      where: { id: req.user.id },
+    });
+
+    if (!staff || !staff.isActive) {
+      throw new AppError('Staff no encontrado', 404);
+    }
+
+    res.json({
+      id: staff.id,
+      username: staff.username,
+      firstName: staff.firstName,
+      lastName: staff.lastName,
+      role: staff.role,
     });
   } catch (error) {
     next(error);

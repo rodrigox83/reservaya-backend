@@ -111,9 +111,26 @@ model PoolConfig {
   updatedAt   DateTime @updatedAt
 }
 
+model Staff {
+  id        String    @id @default(uuid())
+  username  String    @unique
+  password  String
+  firstName String
+  lastName  String
+  role      StaffRole
+  isActive  Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+}
+
 enum UserRole {
   USER
   ADMIN
+}
+
+enum StaffRole {
+  ADMIN
+  RECEPTIONIST
 }
 
 enum ReservationStatus {

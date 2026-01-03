@@ -5,8 +5,9 @@ import { AppError } from './errorHandler.js';
 export interface AuthRequest extends Request {
   user?: {
     id: string;
-    departmentCode: string;
+    departmentCode?: string;
     role: string;
+    isStaff?: boolean;
   };
 }
 
@@ -22,8 +23,9 @@ export function authenticate(req: AuthRequest, _res: Response, next: NextFunctio
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET || 'secret') as {
       id: string;
-      departmentCode: string;
+      departmentCode?: string;
       role: string;
+      isStaff?: boolean;
     };
     req.user = decoded;
     next();
@@ -42,4 +44,28 @@ export function requireAdmin(req: AuthRequest, _res: Response, next: NextFunctio
   }
 
   next();
+}
+
+// Middleware para requerir que sea staff (admin o recepcionista)
+export function requireStaff(req: AuthRequest, _res: Response, next: NextFunction) {
+  if (!req.user || !req.user.isStaff) {
+    throw new AppError('Acceso denegado. Se requiere ser personal autorizado.', 403);
+  }
+
+  next();
+}
+
+// Middleware para requerir rol específico de staff
+export function requireStaffRole(...roles: string[]) {
+  return (req: AuthRequest, _res: Response, next: NextFunction) => {
+    if (!req.user || !req.user.isStaff) {
+      throw new AppError('Acceso denegado. Se requiere ser personal autorizado.', 403);
+    }
+
+    if (!roles.includes(req.user.role)) {
+      throw new AppError(`Acceso denegado. Se requiere rol: ${roles.join(' o ')}`, 403);
+    }
+
+    next();
+  };
 }

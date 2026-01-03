@@ -1,9 +1,40 @@
-import { PrismaClient, UserRole, GuestType } from '@prisma/client';
+import { PrismaClient, UserRole, GuestType, StaffRole } from '@prisma/client';
+import bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
 
 async function main() {
   console.log('Seeding database...');
+
+  // Crear usuarios staff (admin y recepcionista)
+  const adminPassword = await bcrypt.hash('reservaya2024', 10);
+  const receptionistPassword = await bcrypt.hash('recepcion2024', 10);
+
+  const staffAdmin = await prisma.staff.upsert({
+    where: { username: 'admin' },
+    update: {},
+    create: {
+      username: 'admin',
+      password: adminPassword,
+      firstName: 'Administrador',
+      lastName: 'Sistema',
+      role: StaffRole.ADMIN,
+    },
+  });
+
+  const staffReceptionist = await prisma.staff.upsert({
+    where: { username: 'recepcion' },
+    update: {},
+    create: {
+      username: 'recepcion',
+      password: receptionistPassword,
+      firstName: 'Recepcionista',
+      lastName: 'Principal',
+      role: StaffRole.RECEPTIONIST,
+    },
+  });
+
+  console.log('Staff created:', { admin: staffAdmin.username, receptionist: staffReceptionist.username });
 
   // Crear propietarios
   const owner1 = await prisma.owner.upsert({
