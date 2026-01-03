@@ -9,11 +9,13 @@ const loginSchema = z.object({
   tower: z.string().min(1),
   floor: z.string().min(1),
   apartment: z.string().min(1),
+  dni: z.string().min(8),
 });
 
 const registerOwnerSchema = z.object({
   firstName: z.string().min(1),
   lastName: z.string().min(1),
+  dni: z.string().min(8),
   email: z.string().email(),
   phone: z.string().min(9),
   departmentCode: z.string().min(1),
@@ -25,13 +27,33 @@ function getDepartmentCode(tower: string, floor: string, apartment: string): str
 
 export async function login(req: Request, res: Response, next: NextFunction) {
   try {
-    const { tower, floor, apartment } = loginSchema.parse(req.body);
+    const parseResult = loginSchema.safeParse(req.body);
+    if (!parseResult.success) {
+      const errors = parseResult.error.errors.map(e => e.message).join(', ');
+      res.status(400).json({ error: `Datos inválidos: ${errors}` });
+      return;
+    }
+    const { tower, floor, apartment, dni } = parseResult.data;
     const departmentCode = getDepartmentCode(tower, floor, apartment);
 
     // Buscar si existe un propietario para este departamento
     const owner = await prisma.owner.findUnique({
       where: { departmentCode },
     });
+
+    // Si no hay propietario registrado, indicar que necesita registro
+    if (!owner) {
+      res.json({
+        needsRegistration: true,
+        departmentCode,
+      });
+      return;
+    }
+
+    // Validar DNI
+    if (owner.dni !== dni) {
+      throw new AppError('DNI incorrecto', 401);
+    }
 
     // Buscar o crear el usuario
     let user = await prisma.user.findUnique({
@@ -45,30 +67,14 @@ export async function login(req: Request, res: Response, next: NextFunction) {
           tower,
           floor,
           apartment,
-          ownerId: owner?.id,
+          ownerId: owner.id,
         },
         include: { owner: true },
       });
     }
 
-    // Si no hay propietario registrado, indicar que necesita registro
-    if (!owner) {
-      res.json({
-        needsRegistration: true,
-        departmentCode,
-        user: {
-          id: user.id,
-          tower: user.tower,
-          floor: user.floor,
-          apartment: user.apartment,
-          departmentCode,
-        },
-      });
-      return;
-    }
-
     const token = jwt.sign(
-      { id: user.id, departmentCode },
+      { id: user.id, departmentCode, role: user.role },
       process.env.JWT_SECRET || 'secret',
       { expiresIn: '7d' }
     );
@@ -81,10 +87,12 @@ export async function login(req: Request, res: Response, next: NextFunction) {
         floor: user.floor,
         apartment: user.apartment,
         departmentCode,
+        role: user.role,
         owner: {
           id: owner.id,
           firstName: owner.firstName,
           lastName: owner.lastName,
+          dni: owner.dni,
           email: owner.email,
           phone: owner.phone,
           departmentCode: owner.departmentCode,
@@ -101,10 +109,11 @@ export async function registerOwner(req: Request, res: Response, next: NextFunct
   try {
     const data = registerOwnerSchema.parse(req.body);
 
-    // Verificar si ya existe un propietario con este email o departamento
+    // Verificar si ya existe un propietario con este DNI, email o departamento
     const existingOwner = await prisma.owner.findFirst({
       where: {
         OR: [
+          { dni: data.dni },
           { email: data.email },
           { departmentCode: data.departmentCode },
         ],
@@ -112,6 +121,9 @@ export async function registerOwner(req: Request, res: Response, next: NextFunct
     });
 
     if (existingOwner) {
+      if (existingOwner.dni === data.dni) {
+        throw new AppError('Ya existe un propietario con este DNI', 400);
+      }
       if (existingOwner.email === data.email) {
         throw new AppError('Ya existe un propietario con este email', 400);
       }
@@ -123,6 +135,7 @@ export async function registerOwner(req: Request, res: Response, next: NextFunct
       data: {
         firstName: data.firstName,
         lastName: data.lastName,
+        dni: data.dni,
         email: data.email,
         phone: data.phone,
         departmentCode: data.departmentCode,
@@ -143,6 +156,7 @@ export async function registerOwner(req: Request, res: Response, next: NextFunct
       id: owner.id,
       firstName: owner.firstName,
       lastName: owner.lastName,
+      dni: owner.dni,
       email: owner.email,
       phone: owner.phone,
       departmentCode: owner.departmentCode,
@@ -169,6 +183,7 @@ export async function getOwner(req: Request, res: Response, next: NextFunction) 
       id: owner.id,
       firstName: owner.firstName,
       lastName: owner.lastName,
+      dni: owner.dni,
       email: owner.email,
       phone: owner.phone,
       departmentCode: owner.departmentCode,
@@ -205,10 +220,12 @@ export async function me(req: AuthRequest, res: Response, next: NextFunction) {
       floor: user.floor,
       apartment: user.apartment,
       departmentCode,
+      role: user.role,
       owner: user.owner ? {
         id: user.owner.id,
         firstName: user.owner.firstName,
         lastName: user.owner.lastName,
+        dni: user.owner.dni,
         email: user.owner.email,
         phone: user.owner.phone,
         departmentCode: user.owner.departmentCode,

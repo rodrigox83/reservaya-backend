@@ -5,7 +5,8 @@ import { AppError } from './errorHandler.js';
 export interface AuthRequest extends Request {
   user?: {
     id: string;
-    apartment: string;
+    departmentCode: string;
+    role: string;
   };
 }
 
@@ -21,11 +22,24 @@ export function authenticate(req: AuthRequest, _res: Response, next: NextFunctio
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET || 'secret') as {
       id: string;
-      apartment: string;
+      departmentCode: string;
+      role: string;
     };
     req.user = decoded;
     next();
   } catch {
     throw new AppError('Token inválido', 401);
   }
+}
+
+export function requireAdmin(req: AuthRequest, _res: Response, next: NextFunction) {
+  if (!req.user) {
+    throw new AppError('No autenticado', 401);
+  }
+
+  if (req.user.role !== 'ADMIN') {
+    throw new AppError('Acceso denegado. Se requiere rol de administrador.', 403);
+  }
+
+  next();
 }

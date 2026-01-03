@@ -5,6 +5,8 @@ import dotenv from 'dotenv';
 import authRoutes from './routes/auth.js';
 import grillsRoutes from './routes/grills.js';
 import reservationsRoutes from './routes/reservations.js';
+import adminRoutes from './routes/admin.js';
+import poolRoutes from './routes/pool.js';
 import { errorHandler } from './middlewares/errorHandler.js';
 import { setupSwagger } from './swagger.js';
 
@@ -27,6 +29,8 @@ setupSwagger(app);
 app.use('/api/auth', authRoutes);
 app.use('/api/grills', grillsRoutes);
 app.use('/api/reservations', reservationsRoutes);
+app.use('/api/admin', adminRoutes);
+app.use('/api/pool', poolRoutes);
 
 // Health check
 app.get('/api/health', (_req, res) => {

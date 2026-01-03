@@ -1,0 +1,163 @@
+name: Azure Infrastructure Setup
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy'
+        required: true
+        default: 'stg'
+        type: choice
+        options:
+          - stg
+          - prod
+      destroy:
+        description: 'Destroy infrastructure'
+        required: false
+        default: false
+        type: boolean
+
+env:
+  AZURE_RESOURCE_GROUP: rsgreservaya${{ github.event.inputs.environment }}
+  AZURE_LOCATION: westus3
+  AZURE_APP_SERVICE_PLAN: pasreservaya${{ github.event.inputs.environment }}
+  AZURE_POSTGRES_SERVER: psqlreservaya${{ github.event.inputs.environment }}
+  AZURE_WEBAPP_BACKEND: reservaya-backend-${{ github.event.inputs.environment }}
+  AZURE_WEBAPP_FRONTEND: reservaya-frontend-${{ github.event.inputs.environment }}
+  POSTGRES_DB: reservaya
+  POSTGRES_ADMIN_USER: reservayadmin
+
+jobs:
+  setup-infrastructure:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.inputs.destroy == 'false' }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Login to Azure
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Create Resource Group
+        run: |
+          az group create \
+            --name ${{ env.AZURE_RESOURCE_GROUP }} \
+            --location ${{ env.AZURE_LOCATION }} \
+            --tags environment=${{ github.event.inputs.environment }} project=reservaya
+
+      - name: Create App Service Plan (B1)
+        run: |
+          az appservice plan create \
+            --name ${{ env.AZURE_APP_SERVICE_PLAN }} \
+            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --location ${{ env.AZURE_LOCATION }} \
+            --sku B1 \
+            --is-linux
+
+      - name: Create PostgreSQL Flexible Server
+        run: |
+          az postgres flexible-server create \
+            --name ${{ env.AZURE_POSTGRES_SERVER }} \
+            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --location ${{ env.AZURE_LOCATION }} \
+            --admin-user ${{ env.POSTGRES_ADMIN_USER }} \
+            --admin-password "${{ secrets.POSTGRES_PASSWORD }}" \
+            --sku-name Standard_B1ms \
+            --tier Burstable \
+            --storage-size 32 \
+            --version 15 \
+            --public-access 0.0.0.0-255.255.255.255
+
+      - name: Create PostgreSQL Database
+        run: |
+          az postgres flexible-server db create \
+            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --server-name ${{ env.AZURE_POSTGRES_SERVER }} \
+            --database-name ${{ env.POSTGRES_DB }}
+
+      - name: Create Backend Web App
+        run: |
+          az webapp create \
+            --name ${{ env.AZURE_WEBAPP_BACKEND }} \
+            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --plan ${{ env.AZURE_APP_SERVICE_PLAN }} \
+            --deployment-container-image-name ghcr.io/${{ github.repository_owner }}/reservaya-backend:latest
+
+      - name: Configure Backend Environment Variables
+        run: |
+          DATABASE_URL="postgresql://${{ env.POSTGRES_ADMIN_USER }}:${{ secrets.POSTGRES_PASSWORD }}@${{ env.AZURE_POSTGRES_SERVER }}.postgres.database.azure.com:5432/${{ env.POSTGRES_DB }}?sslmode=require"
+
+          az webapp config appsettings set \
+            --name ${{ env.AZURE_WEBAPP_BACKEND }} \
+            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --settings \
+              DATABASE_URL="$DATABASE_URL" \
+              JWT_SECRET="${{ secrets.JWT_SECRET }}" \
+              NODE_ENV="production" \
+              PORT="3000" \
+              WEBSITES_PORT="3000" \
+              FRONTEND_URL="https://${{ env.AZURE_WEBAPP_FRONTEND }}.azurewebsites.net"
+
+      - name: Configure Backend Docker Registry
+        run: |
+          az webapp config container set \
+            --name ${{ env.AZURE_WEBAPP_BACKEND }} \
+            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --docker-custom-image-name ghcr.io/${{ github.repository_owner }}/reservaya-backend:latest \
+            --docker-registry-server-url https://ghcr.io \
+            --docker-registry-server-user ${{ github.repository_owner }} \
+            --docker-registry-server-password ${{ secrets.GHCR_PAT }}
+
+      - name: Create Frontend Web App
+        run: |
+          az webapp create \
+            --name ${{ env.AZURE_WEBAPP_FRONTEND }} \
+            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --plan ${{ env.AZURE_APP_SERVICE_PLAN }} \
+            --deployment-container-image-name ghcr.io/${{ github.repository_owner }}/reservaya-frontend:latest
+
+      - name: Configure Frontend Docker Registry
+        run: |
+          az webapp config container set \
+            --name ${{ env.AZURE_WEBAPP_FRONTEND }} \
+            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --docker-custom-image-name ghcr.io/${{ github.repository_owner }}/reservaya-frontend:latest \
+            --docker-registry-server-url https://ghcr.io \
+            --docker-registry-server-user ${{ github.repository_owner }} \
+            --docker-registry-server-password ${{ secrets.GHCR_PAT }}
+
+      - name: Configure Frontend Environment Variables
+        run: |
+          az webapp config appsettings set \
+            --name ${{ env.AZURE_WEBAPP_FRONTEND }} \
+            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --settings \
+              WEBSITES_PORT="80"
+
+      - name: Output URLs
+        run: |
+          echo "## Deployment URLs" >> $GITHUB_STEP_SUMMARY
+          echo "- Backend: https://${{ env.AZURE_WEBAPP_BACKEND }}.azurewebsites.net" >> $GITHUB_STEP_SUMMARY
+          echo "- Frontend: https://${{ env.AZURE_WEBAPP_FRONTEND }}.azurewebsites.net" >> $GITHUB_STEP_SUMMARY
+          echo "- PostgreSQL: ${{ env.AZURE_POSTGRES_SERVER }}.postgres.database.azure.com" >> $GITHUB_STEP_SUMMARY
+
+  destroy-infrastructure:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.inputs.destroy == 'true' }}
+
+    steps:
+      - name: Login to Azure
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Destroy Resource Group
+        run: |
+          az group delete \
+            --name ${{ env.AZURE_RESOURCE_GROUP }} \
+            --yes \
+            --no-wait
+          echo "Resource group ${{ env.AZURE_RESOURCE_GROUP }} deletion initiated"

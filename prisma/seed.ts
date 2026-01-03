@@ -1,37 +1,231 @@
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, UserRole, GuestType } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
 async function main() {
-  // Crear parrillas
-  const grills = [
-    { name: 'Parrilla 1', tower: 'A', description: 'Parrilla torre A - Piso 1' },
-    { name: 'Parrilla 2', tower: 'A', description: 'Parrilla torre A - Piso 2' },
-    { name: 'Parrilla 3', tower: 'B', description: 'Parrilla torre B - Piso 1' },
-    { name: 'Parrilla 4', tower: 'B', description: 'Parrilla torre B - Piso 2' },
-    { name: 'Parrilla 5', tower: 'B', description: 'Parrilla torre B - Piso 3' },
-    { name: 'Parrilla 6', tower: 'B', description: 'Parrilla torre B - Piso 4' },
-    { name: 'Parrilla 7', tower: 'B', description: 'Parrilla torre B - Piso 5' },
-    { name: 'Parrilla 8', tower: 'B', description: 'Parrilla torre B - Piso 6' },
-  ];
+  console.log('Seeding database...');
 
-  for (const grill of grills) {
-    await prisma.grill.upsert({
-      where: { id: grill.name.toLowerCase().replace(' ', '-') },
-      update: grill,
+  // Crear propietarios
+  const owner1 = await prisma.owner.upsert({
+    where: { email: 'juan.perez@email.com' },
+    update: { dni: '00000001' },
+    create: {
+      firstName: 'Juan',
+      lastName: 'Pérez',
+      dni: '00000001',
+      email: 'juan.perez@email.com',
+      phone: '987654321',
+      departmentCode: '503A',
+    },
+  });
+
+  const owner2 = await prisma.owner.upsert({
+    where: { email: 'maria.garcia@email.com' },
+    update: { dni: '00000002' },
+    create: {
+      firstName: 'María',
+      lastName: 'García',
+      dni: '00000002',
+      email: 'maria.garcia@email.com',
+      phone: '912345678',
+      departmentCode: '807B',
+    },
+  });
+
+  const adminOwner = await prisma.owner.upsert({
+    where: { email: 'admin@reservaya.com' },
+    update: { dni: '00000000' },
+    create: {
+      firstName: 'Administrador',
+      lastName: 'Sistema',
+      dni: '00000000',
+      email: 'admin@reservaya.com',
+      phone: '000000000',
+      departmentCode: 'ADMIN',
+    },
+  });
+
+  console.log('Owners created:', { owner1: owner1.id, owner2: owner2.id, admin: adminOwner.id });
+
+  // Crear usuarios
+  const user1 = await prisma.user.upsert({
+    where: { tower_floor_apartment: { tower: 'A', floor: '5', apartment: '3' } },
+    update: {},
+    create: {
+      tower: 'A',
+      floor: '5',
+      apartment: '3',
+      ownerId: owner1.id,
+      role: UserRole.USER,
+    },
+  });
+
+  const user2 = await prisma.user.upsert({
+    where: { tower_floor_apartment: { tower: 'B', floor: '8', apartment: '7' } },
+    update: {},
+    create: {
+      tower: 'B',
+      floor: '8',
+      apartment: '7',
+      ownerId: owner2.id,
+      role: UserRole.USER,
+    },
+  });
+
+  const adminUser = await prisma.user.upsert({
+    where: { tower_floor_apartment: { tower: 'A', floor: '1', apartment: '1' } },
+    update: {},
+    create: {
+      tower: 'A',
+      floor: '1',
+      apartment: '1',
+      ownerId: adminOwner.id,
+      role: UserRole.ADMIN,
+    },
+  });
+
+  console.log('Users created:', { user1: user1.id, user2: user2.id, admin: adminUser.id });
+
+  // Crear parrillas - Torre A (2)
+  const grillA1 = await prisma.grill.upsert({
+    where: { id: 'grill-a1' },
+    update: {},
+    create: {
+      id: 'grill-a1',
+      name: 'Parrilla Piscina A1',
+      tower: 'A',
+      description: 'Parrilla grande junto a la piscina, vista panorámica',
+    },
+  });
+
+  const grillA2 = await prisma.grill.upsert({
+    where: { id: 'grill-a2' },
+    update: {},
+    create: {
+      id: 'grill-a2',
+      name: 'Parrilla Piscina A2',
+      tower: 'A',
+      description: 'Parrilla mediana junto a la piscina, ambiente familiar',
+    },
+  });
+
+  // Crear parrillas - Torre B (6)
+  const grillsB = await Promise.all([
+    prisma.grill.upsert({
+      where: { id: 'grill-b1' },
+      update: {},
       create: {
-        id: grill.name.toLowerCase().replace(' ', '-'),
-        ...grill,
+        id: 'grill-b1',
+        name: 'Parrilla B1',
+        tower: 'B',
+        description: 'Parrilla techada, protegida de la lluvia',
       },
-    });
-  }
+    }),
+    prisma.grill.upsert({
+      where: { id: 'grill-b2' },
+      update: {},
+      create: {
+        id: 'grill-b2',
+        name: 'Parrilla B2',
+        tower: 'B',
+        description: 'Parrilla al aire libre, zona jardín',
+      },
+    }),
+    prisma.grill.upsert({
+      where: { id: 'grill-b3' },
+      update: {},
+      create: {
+        id: 'grill-b3',
+        name: 'Parrilla B3',
+        tower: 'B',
+        description: 'Parrilla familiar, ambiente tranquilo',
+      },
+    }),
+    prisma.grill.upsert({
+      where: { id: 'grill-b4' },
+      update: {},
+      create: {
+        id: 'grill-b4',
+        name: 'Parrilla B4',
+        tower: 'B',
+        description: 'Parrilla grande para eventos',
+      },
+    }),
+    prisma.grill.upsert({
+      where: { id: 'grill-b5' },
+      update: {},
+      create: {
+        id: 'grill-b5',
+        name: 'Parrilla B5',
+        tower: 'B',
+        description: 'Parrilla mediana, vista al jardín',
+      },
+    }),
+    prisma.grill.upsert({
+      where: { id: 'grill-b6' },
+      update: {},
+      create: {
+        id: 'grill-b6',
+        name: 'Parrilla B6',
+        tower: 'B',
+        description: 'Parrilla techada premium',
+      },
+    }),
+  ]);
 
-  console.log('Seed completado: 8 parrillas creadas');
+  console.log('Grills created:', { torreA: 2, torreB: grillsB.length });
+
+  // Crear configuración de piscina
+  const poolConfig = await prisma.poolConfig.upsert({
+    where: { id: 'pool-config-1' },
+    update: {},
+    create: {
+      id: 'pool-config-1',
+      maxCapacity: 25,
+      openingTime: '08:00',
+      closingTime: '22:00',
+      isActive: true,
+    },
+  });
+
+  console.log('Pool config created:', poolConfig.id);
+
+  // Crear invitados de piscina para el usuario 1
+  const guest1 = await prisma.poolGuest.upsert({
+    where: { id: 'guest-1' },
+    update: {},
+    create: {
+      id: 'guest-1',
+      firstName: 'Carlos',
+      lastName: 'Pérez',
+      documentNumber: '12345678',
+      guestType: GuestType.RESIDENT,
+      departmentCode: '503A',
+      registeredById: user1.id,
+    },
+  });
+
+  const guest2 = await prisma.poolGuest.upsert({
+    where: { id: 'guest-2' },
+    update: {},
+    create: {
+      id: 'guest-2',
+      firstName: 'Ana',
+      lastName: 'López',
+      guestType: GuestType.FRIEND,
+      departmentCode: '503A',
+      registeredById: user1.id,
+    },
+  });
+
+  console.log('Pool guests created:', { guest1: guest1.id, guest2: guest2.id });
+
+  console.log('Seeding completed successfully!');
 }
 
 main()
   .catch((e) => {
-    console.error(e);
+    console.error('Error seeding database:', e);
     process.exit(1);
   })
   .finally(async () => {
