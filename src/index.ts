@@ -17,8 +17,22 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // Middlewares
+const allowedOrigins = [
+  process.env.FRONTEND_URL || 'http://localhost:5173',
+  'https://reservaya-frontend-stg.azurewebsites.net',
+  'https://reservaya-frontend-prod.azurewebsites.net',
+];
+
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+  origin: (origin, callback) => {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(null, true); // Allow all origins for now in development
+    }
+  },
   credentials: true,
 }));
 app.use(express.json());
@@ -34,7 +48,11 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/pool', poolRoutes);
 app.use('/api/guests', guestsRoutes);
 
-// Health check
+// Health check (both endpoints for compatibility)
+app.get('/health', (_req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
