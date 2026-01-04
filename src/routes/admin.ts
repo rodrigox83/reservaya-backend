@@ -14,5 +14,7 @@ router.post('/owners', (req, res, next) => adminController.createOwner(req as Au
 router.patch('/owners/:id', (req, res, next) => adminController.updateOwner(req as AuthRequest, res, next));
 router.get('/reservations', (req, res, next) => adminController.getAllReservations(req as AuthRequest, res, next));
 router.get('/reservations/pending', (req, res, next) => adminController.getPendingReservations(req as AuthRequest, res, next));
+router.get('/guests', (req, res, next) => adminController.getAllGuests(req as AuthRequest, res, next));
+router.delete('/guests/:id', (req, res, next) => adminController.deleteGuest(req as AuthRequest, res, next));
 
 export default router;

@@ -88,6 +88,9 @@ export async function getAllReservations(_req: AuthRequest, res: Response, next:
 
 export async function getDashboardStats(_req: AuthRequest, res: Response, next: NextFunction) {
   try {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
     const [
       totalOwners,
       totalReservations,
@@ -95,6 +98,9 @@ export async function getDashboardStats(_req: AuthRequest, res: Response, next: 
       approvedReservations,
       rejectedReservations,
       totalGrills,
+      totalGuests,
+      todayPoolAccesses,
+      activePoolAccesses,
     ] = await Promise.all([
       prisma.owner.count(),
       prisma.reservation.count(),
@@ -102,6 +108,15 @@ export async function getDashboardStats(_req: AuthRequest, res: Response, next: 
       prisma.reservation.count({ where: { status: 'APPROVED' } }),
       prisma.reservation.count({ where: { status: 'REJECTED' } }),
       prisma.grill.count(),
+      prisma.guest.count(),
+      prisma.poolAccess.count({
+        where: {
+          entryTime: { gte: today },
+        },
+      }),
+      prisma.poolAccess.count({
+        where: { status: 'ACTIVE' },
+      }),
     ]);
 
     res.json({
@@ -111,6 +126,9 @@ export async function getDashboardStats(_req: AuthRequest, res: Response, next: 
       approvedReservations,
       rejectedReservations,
       totalGrills,
+      totalGuests,
+      todayPoolAccesses,
+      activePoolAccesses,
     });
   } catch (error) {
     next(error);
@@ -164,6 +182,40 @@ export async function updateOwner(req: AuthRequest, res: Response, next: NextFun
     });
 
     res.json(updatedOwner);
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function getAllGuests(_req: AuthRequest, res: Response, next: NextFunction) {
+  try {
+    const guests = await prisma.guest.findMany({
+      orderBy: { createdAt: 'desc' },
+    });
+
+    res.json(guests);
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function deleteGuest(req: AuthRequest, res: Response, next: NextFunction) {
+  try {
+    const { id } = req.params;
+
+    const guest = await prisma.guest.findUnique({
+      where: { id },
+    });
+
+    if (!guest) {
+      throw new AppError('Invitado no encontrado', 404);
+    }
+
+    await prisma.guest.delete({
+      where: { id },
+    });
+
+    res.json({ message: 'Invitado eliminado correctamente' });
   } catch (error) {
     next(error);
   }
