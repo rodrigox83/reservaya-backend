@@ -151,3 +151,27 @@ enum PoolAccessStatus {
   ACTIVE
   COMPLETED
 }
+
+enum DocumentType {
+  DNI
+  PASSPORT
+  CE
+  OTHER
+}
+
+model Guest {
+  id             String       @id @default(uuid())
+  firstName      String
+  lastName       String
+  documentType   DocumentType @default(DNI)
+  documentNumber String
+  email          String?
+  phone          String?
+  departmentCode String
+  guestType      GuestType    @default(AIRBNB)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@unique([documentType, documentNumber])
+  @@index([departmentCode])
+}
