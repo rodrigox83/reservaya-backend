@@ -8,12 +8,15 @@ const addGuestSchema = z.object({
   firstName: z.string().min(1),
   lastName: z.string().min(1),
   documentNumber: z.string().optional(),
-  guestType: z.enum(['RESIDENT', 'FRIEND', 'TENANT', 'AIRBNB']),
+  guestType: z.string().transform(val => val.toUpperCase()).pipe(
+    z.enum(['RESIDENT', 'FRIEND', 'TENANT', 'AIRBNB'])
+  ),
 });
 
 const registerAccessSchema = z.object({
   personType: z.enum(['owner', 'guest']),
   personId: z.string().min(1),
+  estimatedHours: z.number().optional(),
 });
 
 // Función para limpiar accesos vencidos (marcar como COMPLETED)
@@ -189,6 +192,9 @@ export async function registerAccess(req: AuthRequest, res: Response, next: Next
     const maxCapacity = config?.maxCapacity || 25;
     const maxHoursPerVisit = config?.maxHoursPerVisit || 2;
 
+    // Usar las horas estimadas del request si se proporcionan
+    const estimatedHours = data.estimatedHours || maxHoursPerVisit;
+
     const activeCount = await prisma.poolAccess.count({
       where: { status: 'ACTIVE' },
     });
@@ -198,7 +204,7 @@ export async function registerAccess(req: AuthRequest, res: Response, next: Next
     }
 
     let personName = '';
-    let guestType = null;
+    let guestType: string | null = null;
     let ownerId = null;
     let guestId = null;
 
@@ -218,26 +224,50 @@ export async function registerAccess(req: AuthRequest, res: Response, next: Next
         : `Depto ${user.tower}-${user.floor}${user.apartment}`;
       ownerId = user.id;
     } else {
-      // Obtener datos del invitado
-      const guest = await prisma.poolGuest.findUnique({
-        where: { id: data.personId },
-      });
+      // Si es un guest logueado registrándose a sí mismo
+      if (req.user.isGuest && data.personId === req.user.id) {
+        const guest = await prisma.guest.findUnique({
+          where: { id: data.personId },
+        });
 
-      if (!guest) {
-        throw new AppError('Invitado no encontrado', 404);
+        if (!guest) {
+          throw new AppError('Huésped no encontrado', 404);
+        }
+
+        personName = `${guest.firstName} ${guest.lastName}`;
+        guestType = guest.guestType;
+        // No tenemos guestId de PoolGuest, usamos null
+        guestId = null;
+      } else {
+        // Obtener datos del invitado (PoolGuest)
+        const poolGuest = await prisma.poolGuest.findUnique({
+          where: { id: data.personId },
+        });
+
+        if (!poolGuest) {
+          throw new AppError('Invitado no encontrado', 404);
+        }
+
+        // Si el usuario es un guest logueado, verificar que el PoolGuest fue registrado por él
+        if (req.user.isGuest) {
+          if (poolGuest.registeredById !== req.user.id) {
+            throw new AppError('No tienes permiso para registrar este invitado', 403);
+          }
+        } else {
+          // Si es un usuario normal (propietario), verificar que el PoolGuest fue registrado por él
+          if (poolGuest.registeredById !== req.user.id) {
+            throw new AppError('No tienes permiso para registrar este invitado', 403);
+          }
+        }
+
+        personName = `${poolGuest.firstName} ${poolGuest.lastName}`;
+        guestType = poolGuest.guestType;
+        guestId = poolGuest.id;
       }
-
-      if (guest.registeredById !== req.user.id) {
-        throw new AppError('No tienes permiso para registrar este invitado', 403);
-      }
-
-      personName = `${guest.firstName} ${guest.lastName}`;
-      guestType = guest.guestType;
-      guestId = guest.id;
     }
 
     const entryTime = new Date();
-    const expectedExitTime = new Date(entryTime.getTime() + maxHoursPerVisit * 60 * 60 * 1000);
+    const expectedExitTime = new Date(entryTime.getTime() + estimatedHours * 60 * 60 * 1000);
 
     const access = await prisma.poolAccess.create({
       data: {
@@ -246,7 +276,7 @@ export async function registerAccess(req: AuthRequest, res: Response, next: Next
         departmentCode: req.user.departmentCode,
         guestType,
         entryTime,
-        estimatedHours: maxHoursPerVisit,
+        estimatedHours,
         expectedExitTime,
         ownerId,
         guestId,
