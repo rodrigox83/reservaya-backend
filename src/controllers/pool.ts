@@ -14,8 +14,34 @@ const addGuestSchema = z.object({
 const registerAccessSchema = z.object({
   personType: z.enum(['owner', 'guest']),
   personId: z.string().min(1),
-  estimatedHours: z.number().min(1).max(12),
 });
+
+// Función para limpiar accesos vencidos (marcar como COMPLETED)
+export async function cleanupExpiredAccesses() {
+  const config = await prisma.poolConfig.findFirst();
+  const maxHours = config?.maxHoursPerVisit || 2;
+
+  const expirationTime = new Date(Date.now() - maxHours * 60 * 60 * 1000);
+
+  const result = await prisma.poolAccess.updateMany({
+    where: {
+      status: 'ACTIVE',
+      entryTime: {
+        lte: expirationTime,
+      },
+    },
+    data: {
+      status: 'COMPLETED',
+      actualExitTime: new Date(),
+    },
+  });
+
+  if (result.count > 0) {
+    console.log(`[Pool Cleanup] ${result.count} accesos vencidos marcados como completados`);
+  }
+
+  return result.count;
+}
 
 // Obtener invitados del usuario actual
 export async function getGuests(req: AuthRequest, res: Response, next: NextFunction) {
@@ -103,6 +129,9 @@ export async function getActiveAccesses(req: AuthRequest, res: Response, next: N
       throw new AppError('No autenticado', 401);
     }
 
+    // Limpiar accesos vencidos antes de consultar
+    await cleanupExpiredAccesses();
+
     const accesses = await prisma.poolAccess.findMany({
       where: { status: 'ACTIVE' },
       orderBy: { entryTime: 'desc' },
@@ -152,9 +181,13 @@ export async function registerAccess(req: AuthRequest, res: Response, next: Next
 
     const data = registerAccessSchema.parse(req.body);
 
+    // Limpiar accesos vencidos antes de verificar capacidad
+    await cleanupExpiredAccesses();
+
     // Verificar capacidad
     const config = await prisma.poolConfig.findFirst();
     const maxCapacity = config?.maxCapacity || 25;
+    const maxHoursPerVisit = config?.maxHoursPerVisit || 2;
 
     const activeCount = await prisma.poolAccess.count({
       where: { status: 'ACTIVE' },
@@ -204,7 +237,7 @@ export async function registerAccess(req: AuthRequest, res: Response, next: Next
     }
 
     const entryTime = new Date();
-    const expectedExitTime = new Date(entryTime.getTime() + data.estimatedHours * 60 * 60 * 1000);
+    const expectedExitTime = new Date(entryTime.getTime() + maxHoursPerVisit * 60 * 60 * 1000);
 
     const access = await prisma.poolAccess.create({
       data: {
@@ -213,7 +246,7 @@ export async function registerAccess(req: AuthRequest, res: Response, next: Next
         departmentCode: req.user.departmentCode,
         guestType,
         entryTime,
-        estimatedHours: data.estimatedHours,
+        estimatedHours: maxHoursPerVisit,
         expectedExitTime,
         ownerId,
         guestId,
@@ -269,8 +302,12 @@ export async function getStats(req: AuthRequest, res: Response, next: NextFuncti
       throw new AppError('No autenticado', 401);
     }
 
+    // Limpiar accesos vencidos antes de consultar estadísticas
+    await cleanupExpiredAccesses();
+
     const config = await prisma.poolConfig.findFirst();
     const maxCapacity = config?.maxCapacity || 25;
+    const maxHoursPerVisit = config?.maxHoursPerVisit || 2;
 
     const activeAccesses = await prisma.poolAccess.findMany({
       where: { status: 'ACTIVE' },
@@ -283,6 +320,7 @@ export async function getStats(req: AuthRequest, res: Response, next: NextFuncti
     res.json({
       currentOccupancy,
       maxCapacity,
+      maxHoursPerVisit,
       availableSpots: maxCapacity - currentOccupancy,
       owners,
       guests,

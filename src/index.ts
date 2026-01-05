@@ -10,6 +10,7 @@ import poolRoutes from './routes/pool.js';
 import guestsRoutes from './routes/guests.js';
 import { errorHandler } from './middlewares/errorHandler.js';
 import { setupSwagger } from './swagger.js';
+import { cleanupExpiredAccesses } from './controllers/pool.js';
 
 dotenv.config();
 
@@ -62,4 +63,17 @@ app.use(errorHandler);
 
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
+
+  // Job periódico para limpiar accesos vencidos de la piscina (cada minuto)
+  const CLEANUP_INTERVAL = 60 * 1000; // 1 minuto
+  setInterval(async () => {
+    try {
+      await cleanupExpiredAccesses();
+    } catch (error) {
+      console.error('[Pool Cleanup] Error:', error);
+    }
+  }, CLEANUP_INTERVAL);
+
+  // Ejecutar limpieza inicial al arrancar
+  cleanupExpiredAccesses().catch(err => console.error('[Pool Cleanup] Error inicial:', err));
 });

@@ -17,4 +17,8 @@ router.get('/reservations/pending', (req, res, next) => adminController.getPendi
 router.get('/guests', (req, res, next) => adminController.getAllGuests(req as AuthRequest, res, next));
 router.delete('/guests/:id', (req, res, next) => adminController.deleteGuest(req as AuthRequest, res, next));
 
+// Pool configuration
+router.get('/pool-config', (req, res, next) => adminController.getPoolConfig(req as AuthRequest, res, next));
+router.put('/pool-config', (req, res, next) => adminController.updatePoolConfig(req as AuthRequest, res, next));
+
 export default router;

@@ -221,6 +221,74 @@ export async function deleteGuest(req: AuthRequest, res: Response, next: NextFun
   }
 }
 
+// Pool Configuration
+const updatePoolConfigSchema = z.object({
+  maxCapacity: z.number().min(1).max(100).optional(),
+  maxHoursPerVisit: z.number().min(1).max(12).optional(),
+  openingTime: z.string().regex(/^\d{2}:\d{2}$/).optional(),
+  closingTime: z.string().regex(/^\d{2}:\d{2}$/).optional(),
+  isActive: z.boolean().optional(),
+});
+
+export async function getPoolConfig(_req: AuthRequest, res: Response, next: NextFunction) {
+  try {
+    let config = await prisma.poolConfig.findFirst();
+
+    // Si no existe configuración, crear una por defecto
+    if (!config) {
+      config = await prisma.poolConfig.create({
+        data: {
+          maxCapacity: 10,
+          maxHoursPerVisit: 2,
+          openingTime: '08:00',
+          closingTime: '22:00',
+          isActive: true,
+        },
+      });
+    }
+
+    res.json(config);
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function updatePoolConfig(req: AuthRequest, res: Response, next: NextFunction) {
+  try {
+    const parseResult = updatePoolConfigSchema.safeParse(req.body);
+    if (!parseResult.success) {
+      const errors = parseResult.error.errors.map(e => e.message).join(', ');
+      throw new AppError(`Datos inválidos: ${errors}`, 400);
+    }
+
+    const data = parseResult.data;
+
+    // Obtener o crear configuración
+    let config = await prisma.poolConfig.findFirst();
+
+    if (!config) {
+      config = await prisma.poolConfig.create({
+        data: {
+          maxCapacity: data.maxCapacity ?? 10,
+          maxHoursPerVisit: data.maxHoursPerVisit ?? 2,
+          openingTime: data.openingTime ?? '08:00',
+          closingTime: data.closingTime ?? '22:00',
+          isActive: data.isActive ?? true,
+        },
+      });
+    } else {
+      config = await prisma.poolConfig.update({
+        where: { id: config.id },
+        data,
+      });
+    }
+
+    res.json(config);
+  } catch (error) {
+    next(error);
+  }
+}
+
 export async function createOwner(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     const parseResult = createOwnerSchema.safeParse(req.body);

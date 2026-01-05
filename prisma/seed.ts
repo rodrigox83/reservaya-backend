@@ -38,7 +38,7 @@ async function main() {
 
   // Crear propietarios
   const owner1 = await prisma.owner.upsert({
-    where: { email: 'juan.perez@email.com' },
+    where: { departmentCode: '503A' },
     update: { dni: '00000001' },
     create: {
       firstName: 'Juan',
@@ -51,7 +51,7 @@ async function main() {
   });
 
   const owner2 = await prisma.owner.upsert({
-    where: { email: 'maria.garcia@email.com' },
+    where: { departmentCode: '807B' },
     update: { dni: '00000002' },
     create: {
       firstName: 'María',
@@ -64,7 +64,7 @@ async function main() {
   });
 
   const adminOwner = await prisma.owner.upsert({
-    where: { email: 'admin@reservaya.com' },
+    where: { departmentCode: 'ADMIN' },
     update: { dni: '00000000' },
     create: {
       firstName: 'Administrador',
@@ -209,10 +209,11 @@ async function main() {
   // Crear configuración de piscina
   const poolConfig = await prisma.poolConfig.upsert({
     where: { id: 'pool-config-1' },
-    update: {},
+    update: { maxHoursPerVisit: 2 },
     create: {
       id: 'pool-config-1',
       maxCapacity: 25,
+      maxHoursPerVisit: 2,
       openingTime: '08:00',
       closingTime: '22:00',
       isActive: true,
