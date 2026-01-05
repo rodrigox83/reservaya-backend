@@ -11,12 +11,16 @@ model Owner {
   id             String   @id @default(uuid())
   firstName      String
   lastName       String
-  email          String   @unique
+  email          String
   phone          String
   departmentCode String   @unique
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
+  dni            String
   user           User?
+
+  @@index([dni])
+  @@index([email])
 }
 
 model User {
@@ -25,10 +29,13 @@ model User {
   floor        String
   apartment    String
   ownerId      String?       @unique
+  role         UserRole      @default(USER)
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
-  owner        Owner?        @relation(fields: [ownerId], references: [id])
+  poolAccesses PoolAccess[]
+  poolGuests   PoolGuest[]
   reservations Reservation[]
+  owner        Owner?        @relation(fields: [ownerId], references: [id])
 
   @@unique([tower, floor, apartment])
 }
@@ -52,11 +59,84 @@ model Reservation {
   grillId   String
   createdAt DateTime          @default(now())
   updatedAt DateTime          @updatedAt
-
-  user  User  @relation(fields: [userId], references: [id])
-  grill Grill @relation(fields: [grillId], references: [id])
+  grill     Grill             @relation(fields: [grillId], references: [id])
+  user      User              @relation(fields: [userId], references: [id])
 
   @@unique([grillId, date])
+}
+
+model PoolGuest {
+  id                   String       @id @default(uuid())
+  firstName            String
+  lastName             String
+  documentNumber       String?
+  guestType            GuestType
+  departmentCode       String
+  registeredById       String?
+  registeredByGuestId  String?
+  createdAt            DateTime     @default(now())
+  updatedAt            DateTime     @updatedAt
+  poolAccesses         PoolAccess[]
+  registeredBy         User?        @relation(fields: [registeredById], references: [id])
+  registeredByGuest    Guest?       @relation(fields: [registeredByGuestId], references: [id])
+
+  @@index([departmentCode])
+}
+
+model PoolAccess {
+  id               String           @id @default(uuid())
+  personType       String
+  personName       String
+  departmentCode   String
+  guestType        GuestType?
+  entryTime        DateTime         @default(now())
+  estimatedHours   Int
+  expectedExitTime DateTime
+  actualExitTime   DateTime?
+  status           PoolAccessStatus @default(ACTIVE)
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+  ownerId          String?
+  guestId          String?
+  guest            PoolGuest?       @relation(fields: [guestId], references: [id])
+  owner            User?            @relation(fields: [ownerId], references: [id])
+
+  @@index([departmentCode])
+  @@index([status])
+  @@index([entryTime])
+}
+
+model PoolConfig {
+  id               String   @id @default(uuid())
+  maxCapacity      Int      @default(10)
+  maxHoursPerVisit Int      @default(2)
+  openingTime      String   @default("08:00")
+  closingTime      String   @default("22:00")
+  isActive         Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+model Staff {
+  id        String    @id @default(uuid())
+  username  String    @unique
+  password  String
+  firstName String
+  lastName  String
+  role      StaffRole
+  isActive  Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+}
+
+enum UserRole {
+  USER
+  ADMIN
+}
+
+enum StaffRole {
+  ADMIN
+  RECEPTIONIST
 }
 
 enum ReservationStatus {
@@ -64,4 +144,41 @@ enum ReservationStatus {
   APPROVED
   REJECTED
   CANCELLED
+}
+
+enum GuestType {
+  RESIDENT
+  FRIEND
+  TENANT
+  AIRBNB
+}
+
+enum PoolAccessStatus {
+  ACTIVE
+  COMPLETED
+}
+
+enum DocumentType {
+  DNI
+  PASSPORT
+  CE
+  OTHER
+}
+
+model Guest {
+  id             String       @id @default(uuid())
+  firstName      String
+  lastName       String
+  documentType   DocumentType @default(DNI)
+  documentNumber String
+  email          String?
+  phone          String?
+  departmentCode String
+  guestType      GuestType    @default(AIRBNB)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  poolGuests     PoolGuest[]
+
+  @@unique([documentType, documentNumber])
+  @@index([departmentCode])
 }

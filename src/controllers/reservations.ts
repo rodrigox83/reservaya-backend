@@ -5,8 +5,8 @@ import { AppError } from '../middlewares/errorHandler.js';
 import { AuthRequest } from '../middlewares/auth.js';
 
 const createReservationSchema = z.object({
-  grillId: z.string().uuid(),
-  date: z.string().datetime(),
+  grillId: z.string().min(1),
+  date: z.string(),
 });
 
 export async function getAll(_req: Request, res: Response, next: NextFunction) {
