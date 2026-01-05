@@ -115,24 +115,13 @@ export async function registerOwner(req: Request, res: Response, next: NextFunct
   try {
     const data = registerOwnerSchema.parse(req.body);
 
-    // Verificar si ya existe un propietario con este DNI, email o departamento
-    const existingOwner = await prisma.owner.findFirst({
-      where: {
-        OR: [
-          { dni: data.dni },
-          { email: data.email },
-          { departmentCode: data.departmentCode },
-        ],
-      },
+    // Solo verificar si el departamento ya tiene un propietario registrado
+    // Un mismo propietario (DNI/email) puede tener múltiples departamentos
+    const existingOwnerForDepartment = await prisma.owner.findUnique({
+      where: { departmentCode: data.departmentCode },
     });
 
-    if (existingOwner) {
-      if (existingOwner.dni === data.dni) {
-        throw new AppError('Ya existe un propietario con este DNI', 400);
-      }
-      if (existingOwner.email === data.email) {
-        throw new AppError('Ya existe un propietario con este email', 400);
-      }
+    if (existingOwnerForDepartment) {
       throw new AppError('Ya existe un propietario para este departamento', 400);
     }
 

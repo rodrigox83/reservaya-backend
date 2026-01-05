@@ -11,13 +11,16 @@ model Owner {
   id             String   @id @default(uuid())
   firstName      String
   lastName       String
-  email          String   @unique
+  email          String
   phone          String
   departmentCode String   @unique
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
-  dni            String   @unique
+  dni            String
   user           User?
+
+  @@index([dni])
+  @@index([email])
 }
 
 model User {
