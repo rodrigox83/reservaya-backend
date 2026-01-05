@@ -15,4 +15,8 @@ router.get('/me', authenticate, (req, res, next) => authController.me(req as Aut
 router.post('/staff/login', authController.staffLogin);
 router.get('/staff/me', authenticate, (req, res, next) => authController.staffMe(req as AuthRequest, res, next));
 
+// Guest auth (airbnb, tenant, etc.)
+router.post('/guest/login', authController.guestLogin);
+router.get('/guest/me', authenticate, (req, res, next) => authController.guestMe(req as AuthRequest, res, next));
+
 export default router;

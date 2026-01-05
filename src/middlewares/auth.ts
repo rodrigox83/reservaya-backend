@@ -8,6 +8,8 @@ export interface AuthRequest extends Request {
     departmentCode?: string;
     role: string;
     isStaff?: boolean;
+    isGuest?: boolean;
+    guestType?: string;
   };
 }
 
@@ -26,6 +28,8 @@ export function authenticate(req: AuthRequest, _res: Response, next: NextFunctio
       departmentCode?: string;
       role: string;
       isStaff?: boolean;
+      isGuest?: boolean;
+      guestType?: string;
     };
     req.user = decoded;
     next();

@@ -27,6 +27,12 @@ const staffLoginSchema = z.object({
   password: z.string().min(1),
 });
 
+const guestLoginSchema = z.object({
+  departmentCode: z.string().min(1),
+  documentType: z.enum(['DNI', 'PASSPORT', 'CE', 'OTHER']).default('DNI'),
+  documentNumber: z.string().min(6),
+});
+
 function getDepartmentCode(tower: string, floor: string, apartment: string): string {
   return `${floor}0${apartment}${tower}`;
 }
@@ -295,6 +301,115 @@ export async function staffMe(req: AuthRequest, res: Response, next: NextFunctio
       firstName: staff.firstName,
       lastName: staff.lastName,
       role: staff.role,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+// Guest authentication (Airbnb, Tenant, etc.)
+export async function guestLogin(req: Request, res: Response, next: NextFunction) {
+  try {
+    const parseResult = guestLoginSchema.safeParse(req.body);
+    if (!parseResult.success) {
+      const errors = parseResult.error.errors.map(e => e.message).join(', ');
+      throw new AppError(`Datos inválidos: ${errors}`, 400);
+    }
+
+    const { departmentCode, documentType, documentNumber } = parseResult.data;
+
+    // Verificar que el departamento tiene propietario
+    const owner = await prisma.owner.findUnique({
+      where: { departmentCode },
+    });
+
+    if (!owner) {
+      throw new AppError('El departamento indicado no existe o no tiene propietario registrado', 400);
+    }
+
+    // Buscar si existe el guest
+    const guest = await prisma.guest.findUnique({
+      where: {
+        documentType_documentNumber: {
+          documentType,
+          documentNumber,
+        },
+      },
+    });
+
+    // Si no existe el guest, indicar que necesita registro
+    if (!guest) {
+      res.json({
+        needsRegistration: true,
+        departmentCode,
+        documentType,
+        documentNumber,
+      });
+      return;
+    }
+
+    // Verificar que el guest pertenece al departamento indicado
+    if (guest.departmentCode !== departmentCode) {
+      throw new AppError('El documento no corresponde a un huésped de este departamento', 401);
+    }
+
+    // Generar token para el guest
+    const token = jwt.sign(
+      {
+        id: guest.id,
+        departmentCode: guest.departmentCode,
+        role: 'GUEST',
+        isGuest: true,
+        guestType: guest.guestType,
+      },
+      process.env.JWT_SECRET || 'secret',
+      { expiresIn: '24h' }
+    );
+
+    res.json({
+      needsRegistration: false,
+      guest: {
+        id: guest.id,
+        firstName: guest.firstName,
+        lastName: guest.lastName,
+        documentType: guest.documentType,
+        documentNumber: guest.documentNumber,
+        email: guest.email,
+        phone: guest.phone,
+        departmentCode: guest.departmentCode,
+        guestType: guest.guestType,
+      },
+      token,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function guestMe(req: AuthRequest, res: Response, next: NextFunction) {
+  try {
+    if (!req.user || !req.user.isGuest) {
+      throw new AppError('No autenticado como huésped', 401);
+    }
+
+    const guest = await prisma.guest.findUnique({
+      where: { id: req.user.id },
+    });
+
+    if (!guest) {
+      throw new AppError('Huésped no encontrado', 404);
+    }
+
+    res.json({
+      id: guest.id,
+      firstName: guest.firstName,
+      lastName: guest.lastName,
+      documentType: guest.documentType,
+      documentNumber: guest.documentNumber,
+      email: guest.email,
+      phone: guest.phone,
+      departmentCode: guest.departmentCode,
+      guestType: guest.guestType,
     });
   } catch (error) {
     next(error);
