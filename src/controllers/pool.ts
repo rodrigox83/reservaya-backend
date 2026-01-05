@@ -1,5 +1,6 @@
 import { Response, NextFunction } from 'express';
 import { z } from 'zod';
+import { GuestType } from '@prisma/client';
 import { prisma } from '../utils/prisma.js';
 import { AppError } from '../middlewares/errorHandler.js';
 import { AuthRequest } from '../middlewares/auth.js';
@@ -204,7 +205,7 @@ export async function registerAccess(req: AuthRequest, res: Response, next: Next
     }
 
     let personName = '';
-    let guestType: string | null = null;
+    let guestType: GuestType | null = null;
     let ownerId = null;
     let guestId = null;
 
