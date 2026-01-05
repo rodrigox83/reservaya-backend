@@ -232,6 +232,70 @@ export async function registerAccess(req: AuthRequest, res: Response, next: Next
       throw new AppError('La piscina está llena. Capacidad máxima alcanzada.', 400);
     }
 
+    // Verificar si la persona ya usó la piscina hoy (una vez por día)
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    let existingAccessToday = null;
+
+    if (data.personType === 'owner') {
+      // Para propietarios, buscar por ownerId
+      existingAccessToday = await prisma.poolAccess.findFirst({
+        where: {
+          ownerId: data.personId,
+          entryTime: {
+            gte: today,
+            lt: tomorrow,
+          },
+        },
+      });
+
+      if (existingAccessToday) {
+        throw new AppError('Ya usaste la piscina hoy. Solo se permite un acceso por día.', 400);
+      }
+    } else {
+      // Para guests, buscar por guestId (PoolGuest) o por personId si es un Guest logueado
+      if (req.user?.isGuest && data.personId === req.user.id) {
+        // Es un Guest logueado registrándose a sí mismo
+        // Buscar por personName y departmentCode ya que no tienen guestId
+        const guest = await prisma.guest.findUnique({
+          where: { id: data.personId },
+        });
+
+        if (guest) {
+          const guestFullName = `${guest.firstName} ${guest.lastName}`;
+          existingAccessToday = await prisma.poolAccess.findFirst({
+            where: {
+              personType: 'guest',
+              personName: guestFullName,
+              departmentCode: req.user.departmentCode,
+              entryTime: {
+                gte: today,
+                lt: tomorrow,
+              },
+            },
+          });
+        }
+      } else {
+        // Es un PoolGuest (acompañante)
+        existingAccessToday = await prisma.poolAccess.findFirst({
+          where: {
+            guestId: data.personId,
+            entryTime: {
+              gte: today,
+              lt: tomorrow,
+            },
+          },
+        });
+      }
+
+      if (existingAccessToday) {
+        throw new AppError('Esta persona ya usó la piscina hoy. Solo se permite un acceso por día.', 400);
+      }
+    }
+
     let personName = '';
     let guestType: GuestType | null = null;
     let ownerId = null;
