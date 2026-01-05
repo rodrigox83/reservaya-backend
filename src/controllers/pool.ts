@@ -54,8 +54,13 @@ export async function getGuests(req: AuthRequest, res: Response, next: NextFunct
       throw new AppError('No autenticado', 401);
     }
 
+    // Filtrar por el campo correcto según el tipo de usuario
+    const whereClause = req.user.isGuest
+      ? { registeredByGuestId: req.user.id }
+      : { registeredById: req.user.id };
+
     const guests = await prisma.poolGuest.findMany({
-      where: { registeredById: req.user.id },
+      where: whereClause,
       orderBy: { createdAt: 'desc' },
     });
 
@@ -78,15 +83,33 @@ export async function addGuest(req: AuthRequest, res: Response, next: NextFuncti
 
     const data = addGuestSchema.parse(req.body);
 
+    // Determinar quién está registrando el invitado
+    const registrationData: {
+      firstName: string;
+      lastName: string;
+      documentNumber?: string;
+      guestType: typeof data.guestType;
+      departmentCode: string;
+      registeredById?: string;
+      registeredByGuestId?: string;
+    } = {
+      firstName: data.firstName,
+      lastName: data.lastName,
+      documentNumber: data.documentNumber,
+      guestType: data.guestType,
+      departmentCode: req.user.departmentCode,
+    };
+
+    if (req.user.isGuest) {
+      // Si es un Guest (huésped de Airbnb), usar registeredByGuestId
+      registrationData.registeredByGuestId = req.user.id;
+    } else {
+      // Si es un User (propietario), usar registeredById
+      registrationData.registeredById = req.user.id;
+    }
+
     const guest = await prisma.poolGuest.create({
-      data: {
-        firstName: data.firstName,
-        lastName: data.lastName,
-        documentNumber: data.documentNumber,
-        guestType: data.guestType,
-        departmentCode: req.user.departmentCode,
-        registeredById: req.user.id,
-      },
+      data: registrationData,
     });
 
     res.status(201).json(guest);
@@ -112,7 +135,12 @@ export async function removeGuest(req: AuthRequest, res: Response, next: NextFun
       throw new AppError('Invitado no encontrado', 404);
     }
 
-    if (guest.registeredById !== req.user.id) {
+    // Verificar permisos según el tipo de usuario
+    const hasPermission = req.user.isGuest
+      ? guest.registeredByGuestId === req.user.id
+      : guest.registeredById === req.user.id;
+
+    if (!hasPermission) {
       throw new AppError('No tienes permiso para eliminar este invitado', 403);
     }
 
@@ -249,16 +277,13 @@ export async function registerAccess(req: AuthRequest, res: Response, next: Next
           throw new AppError('Invitado no encontrado', 404);
         }
 
-        // Si el usuario es un guest logueado, verificar que el PoolGuest fue registrado por él
-        if (req.user.isGuest) {
-          if (poolGuest.registeredById !== req.user.id) {
-            throw new AppError('No tienes permiso para registrar este invitado', 403);
-          }
-        } else {
-          // Si es un usuario normal (propietario), verificar que el PoolGuest fue registrado por él
-          if (poolGuest.registeredById !== req.user.id) {
-            throw new AppError('No tienes permiso para registrar este invitado', 403);
-          }
+        // Verificar permisos según el tipo de usuario
+        const hasPermission = req.user.isGuest
+          ? poolGuest.registeredByGuestId === req.user.id
+          : poolGuest.registeredById === req.user.id;
+
+        if (!hasPermission) {
+          throw new AppError('No tienes permiso para registrar este invitado', 403);
         }
 
         personName = `${poolGuest.firstName} ${poolGuest.lastName}`;
